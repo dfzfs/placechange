@@ -1,5 +1,7 @@
 /* Heart button in the input bar */
 .cns-heart {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
     cursor: pointer;
     opacity: 0.65;
     transition: color 0.15s, opacity 0.15s, transform 0.1s;

@@ -271,13 +271,39 @@ function buildPopup() {
     window.addEventListener('resize', () => { if (popup.style.display !== 'none') positionPopup(); });
 }
 
+function isMobileLayout() {
+    try {
+        return window.matchMedia('(max-width: 800px), (pointer: coarse)').matches;
+    } catch (e) {
+        return window.innerWidth <= 800;
+    }
+}
+
 function positionPopup() {
     const popup = document.getElementById(POPUP_ID);
     const heart = document.getElementById(HEART_ID);
     if (!popup || !heart) return;
+
+    if (isMobileLayout()) {
+        // Phones: centered near the top of the visible area. Independent of the
+        // heart position, so the on-screen keyboard / zoom cannot push it off-screen.
+        const vv = window.visualViewport;
+        const vh = vv ? vv.height : window.innerHeight;
+        const top = (vv ? vv.offsetTop : 0) + 12;
+        popup.style.left = '50%';
+        popup.style.transform = 'translateX(-50%)';
+        popup.style.bottom = 'auto';
+        popup.style.top = `${top}px`;
+        popup.style.maxHeight = `${Math.round(vh * 0.8)}px`;
+        return;
+    }
+
+    // Desktop: above the heart button.
     const r = heart.getBoundingClientRect();
     const w = popup.offsetWidth || 310;
     const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    popup.style.transform = '';
+    popup.style.top = 'auto';
     popup.style.left = `${left}px`;
     popup.style.bottom = `${window.innerHeight - r.top + 8}px`;
     popup.style.maxHeight = `${Math.max(160, r.top - 16)}px`;
@@ -286,9 +312,15 @@ function positionPopup() {
 function openPopup() {
     const popup = document.getElementById(POPUP_ID);
     if (!popup) return;
-    renderPopup();
-    popup.style.display = 'block';
-    positionPopup();
+    try {
+        if (isMobileLayout()) document.activeElement?.blur?.(); // close the keyboard
+        renderPopup();
+        popup.style.display = 'block';
+        positionPopup();
+    } catch (e) {
+        console.error(`[${MODULE}] open popup failed`, e);
+        toastr.error(`팝업 열기 실패: ${e?.message || e}`);
+    }
 }
 
 function closePopup() {
@@ -306,6 +338,35 @@ function togglePopup() {
 /* Heart button                                                        */
 /* ------------------------------------------------------------------ */
 
+// Tap handling: listen in the capture phase on the document so nothing in ST's
+// mobile UI can swallow the event, and de-duplicate (one tap fires pointerup,
+// touchend and click in a row on phones).
+let lastToggle = 0;
+let heartEventsBound = false;
+
+function onHeartActivate(e) {
+    const t = e.target;
+    if (!t || !t.closest || !t.closest(`#${HEART_ID}`)) return;
+    if (e.type === 'pointerup' && e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const now = Date.now();
+    if (now - lastToggle < 450) return;
+    lastToggle = now;
+    togglePopup();
+}
+
+function bindHeartEvents() {
+    if (heartEventsBound) return;
+    heartEventsBound = true;
+    for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
+        document.addEventListener(type, onHeartActivate, true);
+    }
+}
+
 function mountHeart() {
     if (document.getElementById(HEART_ID)) return true;
     const host = document.getElementById('leftSendForm') || document.getElementById('send_form');
@@ -316,10 +377,9 @@ function mountHeart() {
         tabindex: '0',
         role: 'button',
         title: '이름 바꾸기',
-        onclick: togglePopup,
-        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePopup(); } },
     });
     host.append(heart);
+    bindHeartEvents();
     return true;
 }
 
