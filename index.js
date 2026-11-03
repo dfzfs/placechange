@@ -61,8 +61,10 @@ function isActive() {
 /* Macro override                                                      */
 /* ------------------------------------------------------------------ */
 
-// A macro is only registered while the current chat has an override for it,
-// so chats without overrides keep the stock {{user}} / {{char}} behaviour.
+// Macros are registered the first time a chat needs an override and are then
+// kept registered. They are NEVER unregistered: on some ST versions that would
+// delete the built-in {{user}} / {{char}} too. With no override set, the
+// handlers simply return the original names.
 const registered = { user: false, char: false };
 
 function userHandler() {
@@ -75,15 +77,10 @@ function charHandler() {
 }
 
 function setMacro(key, on, fn) {
-    const c = ctx();
+    if (!on || registered[key]) return;
     try {
-        if (on && !registered[key]) {
-            c.registerMacro(key, fn);
-            registered[key] = true;
-        } else if (!on && registered[key]) {
-            c.unregisterMacro(key);
-            registered[key] = false;
-        }
+        ctx().registerMacro(key, fn);
+        registered[key] = true;
     } catch (e) {
         console.error(`[${MODULE}] macro ${key} failed`, e);
         toastr.error(`{{${key}}} 매크로 등록 실패 (F12 콘솔 확인)`);
